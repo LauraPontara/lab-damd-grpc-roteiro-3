@@ -58,15 +58,21 @@
 
 ### Pergunta 1
 
-*(a preencher)*
+**Pergunta:** No cliente, a linha `stub.consultarHorario(pergunta)` (Java) ou `stub.ConsultarHorario(...)` (Python) parece uma chamada de método comum. Cite, em alto nível, pelo menos três coisas que acontecem "por baixo dos panos" entre essa chamada e o `return` da função no servidor.
+
+**Resposta:** Primeiro, o stub serializa os campos de `PerguntaHorario` (o `nome_aluno`) para o formato binário do Protocol Buffers. Depois, esses bytes são enviados pela conexão HTTP/2 já aberta pelo canal (`ManagedChannel` em Java, `grpc.insecure_channel` em Python) até o endereço e a porta do servidor. No servidor, o runtime do gRPC recebe esses bytes, desserializa de volta para um objeto `PerguntaHorario` e só então invoca o método `consultarHorario`/`ConsultarHorario` implementado na aplicação. Depois que o método retorna, o processo se repete de volta: o `RespostaHorario` é serializado, enviado pela mesma conexão, e desserializado do lado do cliente antes de a chamada `stub.consultarHorario(...)` finalmente retornar o valor.
 
 ### Pergunta 2
 
-*(a preencher)*
+**Pergunta:** Compare esta implementação com o `ClienteTCP` do roteiro anterior. Onde estava, no TCP, o equivalente a "montar a mensagem" e "interpretar a resposta"? Quem faz esse trabalho agora, no gRPC?
+
+**Resposta:** No `ClienteTCP.java`, "montar a mensagem" era simplesmente enviar como texto puro a linha digitada pelo usuário (`saida.println(linha)`), e "interpretar a resposta" era ler de volta outra linha de texto do socket (`entrada.readLine()`) e imprimir, sem nenhuma estrutura, o significado do conteúdo dependia de um acordo informal entre quem escreveu o cliente e quem escreveu o servidor. No gRPC, esse trabalho é feito automaticamente pelo código gerado a partir do `central.proto`. O stub monta a mensagem `PerguntaHorario` a partir de campos nomeados definidos no contrato, cuida da serialização e da desserialização dos dados, e devolve ao cliente um objeto `RespostaHorario` já estruturado, com campos como `getMensagem()` (Java) ou `resposta.mensagem` (Python), sem que o programador escreva nenhuma lógica de parsing manual.
 
 ### Pergunta 3
 
-*(a preencher)*
+**Pergunta:** O que aconteceria se você chamasse `stub.consultarHorario(pergunta)` com o servidor desligado? Teste e descreva o comportamento observado (em qualquer uma das duas linguagens).
+
+**Resposta:** Testei em Python, com o servidor desligado antes de rodar o cliente. A chamada `stub.ConsultarHorario(...)` lançou a exceção `grpc._channel._InactiveRpcError`, com `status = StatusCode.UNAVAILABLE` e a mensagem `failed to connect to all addresses; last error: UNKNOWN: ipv4:127.0.0.1:50091: Failed to connect to remote host: Connection refused`. Ou seja, mesmo parecendo uma chamada de função comum, o gRPC não deixa passar despercebido o fato de que a chamada é remota: ele expõe o erro de rede através de um código de status próprio (`UNAVAILABLE`), de forma parecida com o `ConnectionRefusedError` que já tínhamos visto no TCP e no UDP do laboratório anterior quando o servidor estava fora do ar.
 
 ## Parte D — RPC com streaming de servidor: AcompanharAvisos
 
