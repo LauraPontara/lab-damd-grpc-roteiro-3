@@ -38,15 +38,21 @@
 
 ### Pergunta 1
 
-*(a preencher)*
+**Pergunta:** No laboratório anterior, cada um de vocês definiu o formato das mensagens de forma implícita (comentários e convenção entre quem escreveu o cliente e o servidor). Aqui, o formato está no `central.proto`. Qual a vantagem de ter esse contrato explícito e gerado automaticamente em vez de combinado apenas "de boca"?
+
+**Resposta:** A vantagem principal é que o formato das mensagens deixa de depender de comunicação informal e de disciplina entre quem escreve o cliente e quem escreve o servidor. O contrato é único, fica versionado no repositório, e é a partir dele que são geradas automaticamente as classes de mensagem e o código de serialização nas duas pontas. Isso significa que cliente e servidor não conseguem divergir sobre o formato dos dados sem que o build quebre, por exemplo se um campo for renomeado ou tiver o tipo trocado no `.proto`. Isso elimina o tipo de erro que podia acontecer no laboratório anterior, em que cada lado podia interpretar o protocolo combinado de um jeito ligeiramente diferente.
 
 ### Pergunta 2
 
-*(a preencher)*
+**Pergunta:** O mesmo arquivo `central.proto` gerou código para Java e para Python. O que isso sugere sobre como equipes que usam linguagens diferentes podem se comunicar em um sistema distribuído real?
+
+**Resposta:** Sugere que equipes podem trabalhar em linguagens totalmente diferentes e ainda assim se comunicar de forma confiável, porque o contrato do serviço é neutro em relação à linguagem de implementação. Cada equipe gera, na sua própria linguagem, o código cliente/servidor a partir do mesmo arquivo `.proto`, sem precisar reimplementar manualmente a lógica de serialização nem combinar detalhes de baixo nível como o formato de bytes usado na comunicação. É isso que viabiliza, na prática, sistemas distribuídos heterogêneos, como um serviço em Java conversando com um serviço em Python, sem que a escolha de linguagem de cada equipe vire um bloqueio de integração.
 
 ### Pergunta 3
 
-*(a preencher)*
+**Pergunta:** Observe os arquivos gerados (`target/generated-sources/.../CentralAtendimentoGrpc.java` ou `central_pb2_grpc.py`). Sem entender todo o código gerado, você consegue identificar onde ficam definidas as operações `ConsultarHorario` e `AcompanharAvisos`? Cite o nome de pelo menos uma classe ou método gerado que você reconheceu.
+
+**Resposta:** Sim. Em Java, os métodos `consultarHorario` e `acompanharAvisos` aparecem na classe `CentralAtendimentoGrpc.java`, dentro da classe interna `CentralAtendimentoImplBase` (que o servidor estende para implementar o serviço) e também na classe `CentralAtendimentoBlockingStub` (usada pelo cliente para chamar os métodos). Em Python, os mesmos dois métodos aparecem como métodos da classe `CentralAtendimentoServicer`, dentro de `central_pb2_grpc.py`, que é a classe que o servidor implementa sobrescrevendo `ConsultarHorario` e `AcompanharAvisos`, e também na classe `CentralAtendimentoStub`, usada pelo cliente.
 
 ## Parte C — RPC unário: ConsultarHorario
 
