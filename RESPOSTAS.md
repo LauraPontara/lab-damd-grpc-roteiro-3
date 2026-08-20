@@ -32,7 +32,7 @@
 
 **Pergunta:** Comparando o cliente TCP do laboratório anterior com o cliente gRPC que você vai construir agora: qual dos dois exige que você "pense em rede" (sockets, send/receive, parsing de string) e qual permite que você "pense no problema" (chamar uma função e receber um resultado)? A que tipo de transparência isso se relaciona?
 
-**Resposta:** *(a preencher)*
+**Resposta:** O cliente TCP do laboratório anterior é o que exige "pensar em rede": ele abre o socket manualmente, monta a mensagem como uma linha de texto (`saida.println(linha)`) e depois lê e interpreta a resposta como outra linha de texto (`entrada.readLine()`), sempre lidando diretamente com os detalhes de envio e recebimento de bytes e com o parsing do conteúdo, já que não existe nenhuma estrutura formal de dados. Já o cliente gRPC deixa isso completamente por baixo dos panos: escrever `stub.consultarHorario(pergunta)` ou `stub.acompanharAvisos(inscricao)` "parece" apenas chamar uma função comum e receber um resultado (um objeto `RespostaHorario`, ou uma sequência de objetos `Aviso`, no caso do streaming), sem que o programador precise abrir socket, montar string ou interpretar texto de resposta. Essa diferença se relaciona diretamente com a transparência de acesso, que no TCP está praticamente ausente, já que o programador vê e manipula a natureza remota da chamada o tempo todo, enquanto no gRPC ela é alta, pois a chamada remota fica escondida atrás de uma interface que parece local, exatamente o ponto discutido na Pergunta 1 da Parte A.
 
 ## Parte B — Protocol Buffers e o contrato do serviço
 
@@ -78,12 +78,18 @@
 
 ### Pergunta 1
 
-*(a preencher)*
+**Pergunta:** No laboratório anterior, o Multicast usava um endereço de grupo (230.0.0.1) para alcançar vários clientes com um único envio; aqui, o streaming gRPC é um servidor conversando com um cliente por vez, só que ao longo de uma conexão só. Se você quisesse que vários clientes gRPC recebessem os mesmos avisos ao mesmo tempo, o que precisaria mudar na implementação do servidor?
+
+**Resposta:** Na implementação atual, cada chamada a `AcompanharAvisos` gera sua própria sequência de avisos de forma independente, dentro do próprio método (o `for` em Java e Python roda uma vez por cliente conectado), então se dois clientes se conectarem em momentos diferentes, cada um recebe sua própria contagem de 1 a 5 avisos a partir do instante em que se inscreveu, sem nenhuma coordenação entre eles. Para que vários clientes recebessem exatamente os mesmos avisos ao mesmo tempo, o servidor precisaria manter uma lista central de `StreamObserver` (Java) ou de contextos de streaming ativos (Python), guardando uma referência a cada cliente inscrito no momento em que ele chama `AcompanharAvisos`, e um único processo em segundo plano (uma thread ou tarefa periódica) geraria os avisos e os enviaria (`onNext`, no caso do Java) para todos os observadores registrados de uma vez, em vez de cada chamada gerar sua própria sequência isolada. Ou seja, seria necessário sair do modelo de request e resposta isolado por chamada e introduzir um estado compartilhado do lado do servidor, algo parecido com o registro de clientes que o WebSocket do laboratório anterior já fazia para o mural de avisos.
 
 ### Pergunta 2
 
-*(a preencher)*
+**Pergunta:** Compare o método de streaming em Java (StreamObserver, chamando onNext() repetidamente) com o de Python (uma função geradora usando yield). Os dois alcançam o mesmo resultado, qual das duas abordagens você achou mais natural de entender? Justifique.
+
+**Resposta:** Achei a abordagem em Python, com `yield`, mais natural de entender. O método `AcompanharAvisos` em Python se lê quase como uma descrição direta do comportamento desejado: "para cada número de 1 a 5, produza um aviso e espere dois segundos", sem nenhuma referência explícita ao mecanismo de envio pela rede, a função apenas produz valores um de cada vez e o framework gRPC cuida de transformar cada valor produzido em uma mensagem enviada ao cliente. Já em Java, o `StreamObserver` exige pensar em termos do próprio mecanismo de envio: é preciso chamar `observador.onNext(aviso)` explicitamente a cada iteração e `observador.onCompleted()` ao final, e o tratamento de erro depende de capturar exceções e repassá-las para `observador.onError(e)`. O resultado final é o mesmo dos dois lados, mas a versão em Python separa melhor a lógica de negócio (o que gerar) do mecanismo de streaming (como entregar), enquanto em Java os dois ficam misturados no mesmo método.
 
 ### Pergunta 3
 
-*(a preencher)*
+**Pergunta:** No método acompanharAvisos/AcompanharAvisos, o que aconteceria se o cliente fechasse a conexão (por exemplo, fechando o terminal) no meio do envio dos 5 avisos? Pesquise ou teste o comportamento e descreva o que observou.
+
+**Resposta:** Testei isso em Python, com um servidor e um cliente isolados (mesma lógica do `AcompanharAvisos`, com prints extras a cada etapa do laço), matando o processo do cliente à força (equivalente a fechar o terminal) cerca de 3 segundos após a inscrição, ou seja, logo depois de ele já ter recebido os avisos #1 e #2. No terminal do servidor, o laço seguiu normalmente até imprimir "preparando aviso #3", mas nunca chegou a imprimir a confirmação de envio desse aviso: a tentativa de entregar o terceiro item ao stream já fechado interrompe a execução do gerador naquele ponto, sem nenhuma mensagem de erro visível e sem lançar exceção não tratada até o topo do programa. O mais importante é que o processo do servidor continuou de pé depois disso, pronto para atender novas chamadas de outros clientes, sem travar nem encerrar. Isso confirma que o runtime do gRPC absorve o cancelamento da conexão remota e isola essa falha na chamada específica que estava em andamento, uma diferença importante em relação ao TCP bruto do laboratório anterior, onde uma conexão perdida sem tratamento adequado podia deixar a thread do servidor bloqueada esperando por dados que nunca chegariam.
